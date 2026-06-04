@@ -6,30 +6,32 @@ class Edepsim(CMakePackage):
 
     homepage = "https://github.com/ClarkMcGrew/edep-sim"
     git = "https://github.com/ClarkMcGrew/edep-sim.git"
-    url = "https://github.com/ClarkMcGrew/edep-sim/archive/refs/tags/3.2.0.tar.gz"
+    url = "https://github.com/ClarkMcGrew/edep-sim/archive/refs/tags/4.0.0.tar.gz"
 
     maintainers("brettviren")
 
     license("MIT")
 
-    # Fixme: we do not even attempt to support old releases up to and including 3.2.0
     version("master", branch="master")
+    version("4.1.0", sha256="88821c1d8ef720da3c3239b25a3df8701fd691bef46dc8f7be3fc05ae47b5e0b")
+    version("4.0.0", sha256="50f0e550fa2a0d999f62d6ebcae26ffbf3251061d105849675ea5b0ba218218d")
+    # Note, we only attempt here to support starting with version 4.
 
     depends_on("cmake@3.30:", type="build", when="@master")
 
     # C++
-
+    depends_on('c', type='build')
+    depends_on('cxx', type='build')
     cxxstds = ('11', '14', '17', '20')
     variant('cxxstd', default='17', values=cxxstds, multi=False, description='C++ standard')
 
     # Pass on the C++ standard to dependencies via "anonymous constraint"
     for std in cxxstds:
-        depends_on(f"root@ 6.28.12: cxxstd={std}", when=f'cxxstd={std}')
-        depends_on(f"geant4 @10.6.1: cxxstd={std}", when=f'cxxstd={std}')
-        depends_on(f"eicopticks @main cxxstd={std}", when=f'+opticks cxxstd={std}')
+        # +geom+opengl for Eve
+        depends_on(f"root @6.28.12: +geom +opengl cxxstd={std}", when=f'cxxstd={std}')
 
-    variant('opticks', default=False, when="@master",
-            description='Add support for eic-opticks for GPU accelerated photon transport')
+        # builds with GDML by default.  data recomended.  future: +tbb for wct/phlex compat.
+        depends_on(f"geant4 @11.4.0: +data cxxstd={std}", when=f'cxxstd={std}')
 
     def cmake_args(self):
         # Map the variant value to the standard CMake variable

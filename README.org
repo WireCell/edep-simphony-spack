@@ -1,93 +1,93 @@
-#+title: Spack packages for edep-sim + eic-optics 
+#+title: Spack packages for edep-sim + simphony
 
 * Caveats
 
 This is for an R&D project and not (yet) intended for production.
-- [X] Support edep-sim directly depending on eic-opticks
-- [ ] Support 3rd party opticks plugin
+- [X] Provide building of [[https://github.com/ClarkMcGrew/edep-sim/][edep-sim]] and [[https://github.com/bnlnpps/simphony][simphony]] either individually or together.
+- [ ] Provide building of [[https://github.com/Ningclover/edep-opticks-plugin][edep-opticks-plugin]]
 
 * Quick start
 
+** Prepare Spack
+
 #+begin_example
-git clone https://github.com/WireCell/edep-opticks-spack.git
-spack repo add edep-opticks-spack/edep_opticks/
-spack install edepsim+opticks cxxstd=17
+git clone \
+  -c feature.manyFiles=true --depth 1 --branch v1.1.0 \
+  https://github.com/spack/spack.git /path/to/spack
 #+end_example
 
-To use more cores and speed up the build:
+You can either use =/path/to/spack/bin/spack= or source or start a subshell with
+Spack's shell support.  Eg:
 
 #+begin_example
-spack install --jobs 32 edepsim+opticks cxxstd=17
+bash --rcfile /path/to/spack/share/spack/setup-env.sh
+#+end_example
+
+Then, initialize Spack.
+
+#+begin_example
+spack compiler find
+spack bootstrap now
+#+end_example
+
+With Spack 1.1.0 we need to use newer packaging in order to get the newer Geant4 11.4 that edep-sim needs.  This can be done with:
+
+#+begin_example
+cd $(spack repo list| awk '/builtin/ {print $NF}')
+git fetch --tags
+git checkout v2026.03.0
+cd -
+#+end_example
+
+Confirm with:
+#+begin_example
+$ spack info geant4|grep 11.4.0
+    11.4.0    https://gitlab.cern.ch/geant4/geant4/-/archive/v11.4.0/geant4-v11.4.0.tar.gz
+#+end_example
+
+** Prepare this Spack repo
+
+#+begin_example
+git clone https://github.com/WireCell/edep-simphony-spack.git
+spack repo add edep-simphony-spack/edep_simphony/
+#+end_example
+
+** Build individual packages
+
+#+begin_example
+spack install -j 20 edepsim cxxstd=17
+spack install -j 20 simphony cxxstd=17
+#+end_example
+
+** Build all together in an environment
+
+#+begin_example
+spack env create edepsimphony
+spack -e edepsimphony add edepsim cxxstd=17
+spack -e edepsimphony add simphony cxxstd=17
 #+end_example
 
 * Developing
 
-How to set up a developer environment.
+This section collects some guidance to set up a developer environment.
 
-** Build dependencies with Spack
+** Create development area using a Spack Environment
 
-#+begin_example
-  git clone --branch {version} --depth=2 https://github.com/spack/spack.git
-  source spack/share/spack/setup-env.sh 
-  spack compiler find
-  spack bootstrap now
-
-  git clone https://github.com/WireCell/edep-opticks-spack.git
-  spack repo add edep-opticks-spack/edep_opticks/
-
-  spack install edepsim+opticks cxxstd=17
-#+end_example
-
-** Create development area using a Spack View
-
-A Spack "view" is a tidy directory that symlinks in all files from all required packages and makes an ideal base for development.
+This requires your shell to be "setup" for Spack.  See next for a less invasive way.
 
 #+begin_example
   mkdir hack && cd hack/
 
-  spack view --dependencies yes --exclude edepsim add -i local edepsim@master+opticks cxxstd=17
-  git clone https://github.com/ClarkMcGrew/edep-sim.git
-
-  ./local/bin/cmake -S edep-sim -B edep-sim-build \
-                    -DCMAKE_INSTALL_PREFIX=$PWD/local \
-                    -DCMAKE_INSTALL_RPATH='$ORIGIN/../lib' \
-                    -DCMAKE_INSTALL_RPATH_USE_LINK_PATH=ON                    
-  ./local/bin/cmake --build edep-sim-build
-  ./local/bin/cmake --install edep-sim-build
-  ./local/bin/edep-sim
+  spack env create --with-view local -d . 
+  spack env activate .
+  spack add edepsim cxxstd=17
+  spack add simphony cxxstd=17
+  spack install
 #+end_example
 
-Notes:
-- We reuse the view directory also as our install directory.
-- We add extra =CMAKE_INSTALL_*= defs to set =rpath= in the binaries and avoid =LD_LIBRARY_PATH=.
+You now have dependencies and the two packages themselves under the view directory =local/=.  While in the shell environment for the Spack Environment you have =PKG_CONFIG_PATH= and =CMAKE_PREFIX_PATH= which will let most build systems find dependencies.
 
-*** Automate shell environment with direnv
-
-So far we have not polluted our shell environment.  Using =direnv= is one useful
-way to manage shell environment tied to a directory.  To use this, add the
-following to your =.bashrc= or run it directly.
-
-#+begin_example
-eval $(direnv hook bash)
-#+end_example
-
-Copy this into a =.envrc= file in the directory holding =local/=.
-
-#+begin_example
-load_prefix "$PWD/local"
-#+end_example
-
-Next time you =cd= to the dev directory, run =direnv allow= once.
-
-After this is done, =edep-sim= is in the path and can run.  
-
-#+begin_example
-edep-sim 
-#+end_example
-
-** Create development area using a Spack Environment
-
-t.b.d.
+Exit the subshell or run =despacktivate= to remove the Spack shell modifications.
 
 
 
