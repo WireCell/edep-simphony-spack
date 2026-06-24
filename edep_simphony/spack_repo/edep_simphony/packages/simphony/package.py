@@ -42,7 +42,10 @@ class Simphony(CMakePackage, CudaPackage):
     variant('cxxstd', default='17', values=cxxstds, multi=False, description='C++ standard')
 
     for std in cxxstds:
-        depends_on(f"geant4@11.3.2: cxxstd={std}", when=f'cxxstd={std}')
+        # geant4 pinned to cxxstd=23 to share the unified C++23 geant4 with
+        # edepsim/the env, even though simphony itself compiles at C++17
+        # (hard-wired in its CMakeLists).
+        depends_on("geant4@11.3.2: cxxstd=23", when=f'cxxstd={std}')
 
     depends_on("cuda")
     depends_on("geant4")
