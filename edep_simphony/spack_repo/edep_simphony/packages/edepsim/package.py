@@ -29,10 +29,8 @@ class Edepsim(CMakePackage):
 
     # Pass on the C++ standard to dependencies via "anonymous constraint"
     for std in cxxstds:
-        # +geom for geometry; opengl left unpinned so a shared 'root' spec can
-        # decide (WCT disables it to avoid a second llvm). Add back +opengl here
-        # if you need the Eve event display.
-        depends_on(f"root @6.28.12: +geom cxxstd={std}", when=f'cxxstd={std}')
+        # +geom and +opengl for Eve support which is as of 4.1.0 at least, required
+        depends_on(f"root @6.28.12: +geom +opengl cxxstd={std}", when=f'cxxstd={std}')
 
         # builds with GDML by default.  data recomended.  future: +tbb for wct/phlex compat.
         depends_on(f"geant4 @11.4.0: +data cxxstd={std}", when=f'cxxstd={std}')

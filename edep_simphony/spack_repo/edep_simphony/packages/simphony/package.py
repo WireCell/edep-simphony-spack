@@ -36,16 +36,15 @@ class Simphony(CMakePackage, CudaPackage):
 
     # C++
     depends_on("cxx", type="build")
-    # Verison 17 is hard-wired in the CMakeLists.txt file but likely higher is
-    # okay.  For now, just stick to 17.
-    cxxstds = ('17',)
+    # simphony's own code targets C++17 (its CMakeLists sets the standard), but
+    # the variant accepts 20/23 so it can share a higher-standard geant4 with the
+    # rest of a C++23 environment. geant4's cxxstd tracks this variant (set the
+    # variant to 23 in such an env so its geant4 unifies with the others').
+    cxxstds = ('17', '20', '23')
     variant('cxxstd', default='17', values=cxxstds, multi=False, description='C++ standard')
 
     for std in cxxstds:
-        # geant4 pinned to cxxstd=23 to share the unified C++23 geant4 with
-        # edepsim/the env, even though simphony itself compiles at C++17
-        # (hard-wired in its CMakeLists).
-        depends_on("geant4@11.3.2: cxxstd=23", when=f'cxxstd={std}')
+        depends_on(f"geant4@11.3.2: cxxstd={std}", when=f'cxxstd={std}')
 
     depends_on("cuda")
     depends_on("geant4")
@@ -60,14 +59,65 @@ class Simphony(CMakePackage, CudaPackage):
     depends_on("plog")
     depends_on("python")
 
+    # Highest gcc major nvcc accepts as a host compiler. CUDA 12.4-12.x take <=13;
+    # raise if you target a CUDA that supports newer (12.6->14, 13.0->15).
+    _cuda_max_host_gcc = 13
+
+    def _cuda_host_cxx(self):
+        """An in-spec g++ for nvcc's host compiler, or None for nvcc's default.
+
+        nvcc gates the host gcc version and simphony may be built with a newer
+        compiler. Probe common g++ names for the highest whose major version nvcc
+        accepts. (We can't just depends_on("gcc@:13") -- Spack 1.x unifies that
+        build dep with the package's own, newer, compiler node and drops the
+        version bound.)  Returns None to leave nvcc on its default, which is fine
+        when the build compiler is itself in-spec.
+        """
+        import os
+        from spack.util.executable import Executable, which
+        best = None  # (major, path)
+        seen = set()
+        for name in ["g++-13", "g++-12", "g++-11", "g++-10", "/usr/bin/g++", "g++"]:
+            if os.path.sep in name:
+                exe = Executable(name) if os.path.exists(name) else None
+            else:
+                exe = which(name)
+            if exe is None or exe.path in seen:
+                continue
+            seen.add(exe.path)
+            try:
+                major = int(exe("-dumpversion", output=str).strip().split(".")[0])
+            except Exception:
+                continue
+            if major <= self._cuda_max_host_gcc and (best is None or major > best[0]):
+                best = (major, exe.path)
+        return best[1] if best else None
+
     def cmake_args(self):
-        # Map the variant value to the standard CMake variable
-        return [
-            f"-DCMAKE_CXX_STANDARD={self.spec.variants['cxxstd'].value}"
+        args = [
+            # Map the variant value to the standard CMake variable
+            f"-DCMAKE_CXX_STANDARD={self.spec.variants['cxxstd'].value}",
         ]
-    
+        # nvcc gates its host compiler version, but simphony may be built with a
+        # newer compiler. Point nvcc at the in-spec gcc@:13 (see depends_on) for
+        # the .cu translation units; the rest of simphony stays on the env
+        # compiler. This var governs the actual source compiles; NVCC_APPEND_FLAGS
+        # below covers CMake's compiler-id probe.
+        host_cxx = self._cuda_host_cxx()
+        if host_cxx:
+            args.append(f"-DCMAKE_CUDA_HOST_COMPILER={host_cxx}")
+        return args
+
     def setup_build_environment(self, env):
         # GLM 0.9.9+ requires this for experimental GTX headers such as
         # dual_quaternion, which are reached via string_cast in this codebase.
         if self.spec.satisfies("^glm@0.9.9:"):
             env.append_flags("CPPFLAGS", "-DGLM_ENABLE_EXPERIMENTAL")
+
+        # CMake IGNORES CMAKE_CUDA_HOST_COMPILER during its CUDA compiler-id probe
+        # and instead injects -ccbin = the C++ compiler, which trips nvcc's host
+        # version gate. We override it -- crucially via NVCC_APPEND_FLAGS (not
+        # PREPEND): nvcc honors the LAST -ccbin, so ours must come after CMake's.
+        host_cxx = self._cuda_host_cxx()
+        if self.spec.satisfies("^cuda") and host_cxx:
+            env.append_flags("NVCC_APPEND_FLAGS", f"-ccbin {host_cxx}")
