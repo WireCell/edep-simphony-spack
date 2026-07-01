@@ -28,10 +28,16 @@ class Edepsim(CMakePackage):
     cxxstds = ('11', '14', '17', '20', '23')
     variant('cxxstd', default='17', values=cxxstds, multi=False, description='C++ standard')
 
+    # Starting with 4.3.0, Eve support is optional. Prior to that, it is always on.
+    variant('eve', default=True, when='@4.3.0:', description='Enable ROOT Eve event display support')
+
     # Pass on the C++ standard to dependencies via "anonymous constraint"
     for std in cxxstds:
-        # +geom and +opengl for Eve support which is as of 4.1.0 at least, required
-        depends_on(f"root @6.28.12: +geom +opengl cxxstd={std}", when=f'cxxstd={std}')
+        depends_on(f"root @6.28.12: cxxstd={std}", when=f'cxxstd={std}')
+
+        # +geom and +opengl for Eve support: required prior to 4.3.0, optional after via +eve
+        depends_on("root +geom +opengl", when=f'cxxstd={std} @:4.2')
+        depends_on("root +geom +opengl", when=f'cxxstd={std} @4.3.0: +eve')
 
         # builds with GDML by default.  data recomended.  future: +tbb for wct/phlex compat.
         depends_on(f"geant4 @11.4.0: +data cxxstd={std}", when=f'cxxstd={std}')
